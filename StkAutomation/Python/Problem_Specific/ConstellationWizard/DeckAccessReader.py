@@ -24,8 +24,11 @@ import numpy as np
 # Data begins at line 7
 # SCID = cols 0-4
 import pandas as pd
-from comtypes.client import CreateObject, GetActiveObject
-from comtypes.gen import STKObjects
+from agi.stk12.stkdesktop import STKDesktop
+from agi.stk12.stkengine import STKEngine
+from agi.stk12.stkobjects import *
+from agi.stk12.stkutil import *
+from agi.stk12.utilities.colors import *
 
 cwd = os.getcwd()
 cwdFiles = cwd + "\\Files"
@@ -392,15 +395,11 @@ def ConnectToSTK(
 ):
     # Launch or connect to STK
     try:
-        app = GetActiveObject("STK{}.Application".format(version))
-        root = app.Personality2
-        root.Isolate()
+        stk = STKDesktop.AttachToApplication()
+        root = stk.Root
     except Exception:
-        app = CreateObject("STK{}.Application".format(version))
-        app.Visible = True
-        app.UserControl = True
-        root = app.Personality2
-        root.Isolate()
+        stk = STKDesktop.StartApplication(visible=True, userControl=True)
+        root = stk.Root
         try:
             root.LoadScenario(scenarioPath + "\\" + scenarioName + ".sc")
         except Exception:
@@ -425,9 +424,8 @@ def CreateConstellation(root, TLEFileName, ssc=00000, howToCreate="satsinstk"):
         )
     elif howToCreate == "satsinstk":
         sc = root.CurrentScenario
-        sc2 = sc.QueryInterface(STKObjects.IAgScenario)
         satPaths = FilterObjectsByType("satellite", name="")
-        if sc.Children.Contains(STKObjects.eSatellite, "tempsat"):
+        if sc.Children.Contains(18, "tempsat"): #STKObjects.eSatellite = 18
             tempsat = root.GetObjectFromPath("Satellite/tempsat")
             tempsat.Unload()
 
@@ -467,9 +465,7 @@ def CreateConstellation(root, TLEFileName, ssc=00000, howToCreate="satsinstk"):
 
             # Extract TLE information from dummy satellite
             satDP = (
-                tempsat.DataProviders.Item("TLE Summary Data")
-                .QueryInterface(STKObjects.IAgDataPrvFixed)
-                .Exec()
+                tempsat.DataProviders.Item("TLE Summary Data").Exec()
             )
             TLEData = satDP.DataSets.GetDataSetByName("TLE").GetValues()
             tempsat.Unload()
@@ -490,7 +486,7 @@ def LoadMTO(
 ):
     MTOName = TLEFileName.split("\\")[-1].split(".")[0]
     # Add all visibile satellites as an MTO
-    if root.CurrentScenario.Children.Contains(STKObjects.eMTO, MTOName):
+    if root.CurrentScenario.Children.Contains(12, MTOName): #STKObjects.eMTO = 12
         cmd = "Unload / */MTO/" + MTOName
         root.ExecuteCommand(cmd)
     cmd = "New / */MTO " + MTOName
@@ -542,12 +538,11 @@ def runDeckAccess(
     root, startTime, stopTime, TLEFileName, accessObjPath, constraintSatName=""
 ):
     # Deck Access for the current time. Save the deck access file to the specified
-    root.CurrentScenario.QueryInterface(STKObjects.IAgScenario)
     deckAccessFileName = cwdFiles + "\\Misc\\deckAccessRpt.txt"  # Created
     deckAccessTLEFileName = cwdFiles + "\\Constellations\\deckAccessTLE.tce"  # Created
     startTime = str(startTime)
     stopTime = str(stopTime)
-    if root.CurrentScenario.Children.Contains(STKObjects.eSatellite, constraintSatName):
+    if root.CurrentScenario.Children.Contains(18, constraintSatName): #STKObjects.eSatellite = 18
         cmd = (
             "DeckAccess */"
             + accessObjPath
@@ -617,28 +612,25 @@ def LoadSats(
     # Create Constellations for Further Analysis
     satConName = TLEFileName.split("\\")[-1].split(".")[0]
     try:
-        satCon = root.CurrentScenario.Children.New(
-            STKObjects.eConstellation, satConName
+        satCon2 = root.CurrentScenario.Children.New(
+            6, satConName #STKObjects.eConstellation = 6
         )
     except Exception:
-        satCon = root.GetObjectFromPath("Constellation/" + satConName)
-    satCon2 = satCon.QueryInterface(STKObjects.IAgConstellation)
+        satCon2 = root.GetObjectFromPath("Constellation/" + satConName)
 
     try:
-        tranCon = root.CurrentScenario.Children.New(
-            STKObjects.eConstellation, satConName + "Transmitters"
+        tranCon2 = root.CurrentScenario.Children.New(
+            6, satConName + "Transmitters" #STKObjects.eConstellation = 6
         )
     except Exception:
-        tranCon = root.GetObjectFromPath("Constellation/" + satConName + "Transmitters")
-    tranCon2 = tranCon.QueryInterface(STKObjects.IAgConstellation)
+        tranCon2 = root.GetObjectFromPath("Constellation/" + satConName + "Transmitters")
 
     try:
-        recCon = root.CurrentScenario.Children.New(
-            STKObjects.eConstellation, satConName + "Receivers"
+        recCon2 = root.CurrentScenario.Children.New(
+            6, satConName + "Receivers" #STKObjects.eConstellation = 6
         )
     except Exception:
-        recCon = root.GetObjectFromPath("Constellation/" + satConName + "Receivers")
-    recCon2 = recCon.QueryInterface(STKObjects.IAgConstellation)
+        recCon2 = root.GetObjectFromPath("Constellation/" + satConName + "Receivers")
 
     try:
         satNames = " ".join("tle-" + dfLoad["Ssc2"].values)
@@ -650,10 +642,9 @@ def LoadSats(
             cmd = "Graphics */Satellite/tle-" + dfLoad.loc[ii, "Ssc2"] + " Show Off"
             root.ExecuteCommand(cmd)
 
-            sat = root.GetObjectFromPath("Satellite/tle-" + str(dfLoad.loc[ii, "Ssc2"]))
-            sat2 = sat.QueryInterface(STKObjects.IAgSatellite)
-            sat2.SetPropagatorType(STKObjects.ePropagatorSGP4)
-            prop = sat2.Propagator.QueryInterface(STKObjects.IAgVePropagatorSGP4)
+            sat2 = root.GetObjectFromPath("Satellite/tle-" + str(dfLoad.loc[ii, "Ssc2"]))
+            sat2.SetPropagatorType(4) #STKObjects.ePropagatorSGP4 = 4
+            prop = sat2.Propagator
             prop.CommonTasks.AddSegsFromFile(dfLoad.loc[ii, "Ssc2"], TLEFileName)
             prop.Propagate()
             try:
@@ -735,13 +726,12 @@ def LoadSatsUsingTemplate(
 
     # Create Constellations for Further Analysis
     satConName = TLEFileName.split("\\")[-1].split(".")[0]
-    if root.CurrentScenario.Children.Contains(STKObjects.eConstellation, satConName):
-        satCon = root.GetObjectFromPath("Constellation/" + satConName)
+    if root.CurrentScenario.Children.Contains(6, satConName): #STKObjects.eConstellation = 6
+        satCon2 = root.GetObjectFromPath("Constellation/" + satConName)
     else:
-        satCon = root.CurrentScenario.Children.New(
-            STKObjects.eConstellation, satConName
+        satCon2 = root.CurrentScenario.Children.New(
+            6, satConName #STKObjects.eConstellation = 6
         )
-    satCon2 = satCon.QueryInterface(STKObjects.IAgConstellation)
 
     # Create Constellation for each child object
     if satTempName != "":
@@ -753,13 +743,13 @@ def LoadSatsUsingTemplate(
         for ii in range(len(children)):
             childType, childName = children[ii].split("/")
             name = childName + "s"
-            if root.CurrentScenario.Children.Contains(STKObjects.eConstellation, name):
+            if root.CurrentScenario.Children.Contains(6, name): #STKObjects.eConstellation = 6
                 conObj = root.GetObjectFromPath("Constellation/" + name)
             else:
                 conObj = root.CurrentScenario.Children.New(
-                    STKObjects.eConstellation, name
+                    6, name #STKObjects.eConstellation = 6
                 )
-            conObjs.append(conObj.QueryInterface(STKObjects.IAgConstellation))
+            conObjs.append(conObj)
             if childType == "Sensor":
                 child = satTemp.Children.Item(ii)
                 for jj in range(child.Children.Count):
@@ -767,15 +757,15 @@ def LoadSatsUsingTemplate(
                     grandChildObjs.append(grandChild)
                     name = satConName + childName + grandChild.InstanceName + "s"
                     if root.CurrentScenario.Children.Contains(
-                        STKObjects.eConstellation, name
+                        6, name #STKObjects.eConstellation = 6
                     ):
                         conObj = root.GetObjectFromPath("Constellation/" + name)
                     else:
                         conObj = root.CurrentScenario.Children.New(
-                            STKObjects.eConstellation, name
+                            6, name #STKObjects.eConstellation = 6
                         )
                     conGrandChildObjs.append(
-                        conObj.QueryInterface(STKObjects.IAgConstellation)
+                        conObj
                     )
 
     try:
@@ -793,10 +783,9 @@ def LoadSatsUsingTemplate(
                 + color
             )
             root.ExecuteCommand(cmd)
-            sat = root.GetObjectFromPath("Satellite/tle-" + str(dfLoad.loc[ii, "Ssc2"]))
-            sat2 = sat.QueryInterface(STKObjects.IAgSatellite)
-            sat2.SetPropagatorType(STKObjects.ePropagatorSGP4)
-            prop = sat2.Propagator.QueryInterface(STKObjects.IAgVePropagatorSGP4)
+            sat2 = root.GetObjectFromPath("Satellite/tle-" + str(dfLoad.loc[ii, "Ssc2"]))
+            sat2.SetPropagatorType(4) #STKObjects.ePropagatorSGP4 = 4
+            prop = sat2.Propagator
             prop.CommonTasks.AddSegsFromFile(dfLoad.loc[ii, "Ssc2"], TLEFileName)
             prop.Propagate()
 
@@ -872,8 +861,7 @@ def UnloadObjs(root, objType, pattern="*"):
 
 # Perform Different Types of Analysis
 def chainAnalysis(root, chainPath, objsToAdd, startTime, stopTime, exportFileName):
-    chain = root.GetObjectFromPath(chainPath)
-    chain2 = chain.QueryInterface(STKObjects.IAgChain)
+    chain2 = root.GetObjectFromPath(chainPath)
     chain2.Objects.RemoveAll()
     for obj in objsToAdd:
         chain2.Objects.Add(obj)
@@ -897,8 +885,7 @@ def chainAnalysis(root, chainPath, objsToAdd, startTime, stopTime, exportFileNam
 
 
 def covAnalysis(root, covDefPath, objsToAdd, startTime, stopTime, exportFileName):
-    cov = root.GetObjectFromPath(covDefPath)
-    cov2 = cov.QueryInterface(STKObjects.IAgCoverageDefinition)
+    cov2 = root.GetObjectFromPath(covDefPath)
     cov2.AssetList.RemoveAll()
     for obj in objsToAdd:
         cov2.AssetList.Add(obj)
@@ -935,8 +922,7 @@ def covAnalysis(root, covDefPath, objsToAdd, startTime, stopTime, exportFileName
 def commSysAnalysis(
     root, commSysPath, accessReceiver, objsToAdd, startTime, stopTime, exportFileName
 ):
-    commSys = root.GetObjectFromPath(commSysPath)
-    commSys2 = commSys.QueryInterface(STKObjects.IAgCommSystem)
+    commSys2 = root.GetObjectFromPath(commSysPath)
     commSys2.InterferenceSources.RemoveAll()
     commSys2.TimePeriod.SetExplicitInterval(startTime, stopTime)
     for obj in objsToAdd:

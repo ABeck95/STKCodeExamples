@@ -41,7 +41,11 @@ from DeckAccessReader import (
 
 cwd = os.getcwd()
 cwdFiles = cwd + "\\Files"
-from comtypes.gen import STKObjects
+from agi.stk12.stkdesktop import STKDesktop
+from agi.stk12.stkengine import STKEngine
+from agi.stk12.stkobjects import *
+from agi.stk12.stkutil import *
+from agi.stk12.utilities.colors import *
 
 # Connect To STK
 scenarioPath = cwd + "\\ConstellationWizardExampleScenario"
@@ -49,8 +53,7 @@ scenarioName = "ConstellationWizardExample"
 root = ConnectToSTK(
     scenarioPath=scenarioPath, scenarioName=scenarioName
 )  # Tries to connect to open scenario,then Load scenario,then create new scenario
-sc = root.CurrentScenario
-sc2 = root.CurrentScenario.QueryInterface(STKObjects.IAgScenario)
+sc2 = root.CurrentScenario
 
 for constellationName, satTemplateName, transmitters in zip(
     constellationList, satTemplateList, transmittersList
